@@ -1,34 +1,43 @@
 import allure
 import pytest
 
-from helpers import register_new_courier_and_return_login_password, request_with_retry
-
-
-@pytest.fixture(scope="session")
-def base_url() -> str:
-    return "https://qa-scooter.education-services.ru"
+from helpers import (
+    build_courier_payload,
+    cancel_order,
+    create_courier,
+    delete_courier,
+)
 
 
 @pytest.fixture
-def courier_credentials(base_url: str) -> dict[str, str]:
-    login, password, first_name = register_new_courier_and_return_login_password(base_url)
-    if not login:
+def courier_cleanup():
+    created_couriers = []
+
+    yield created_couriers
+
+    for credentials in created_couriers:
+        with allure.step("Delete created courier"):
+            delete_courier(credentials)
+
+
+@pytest.fixture
+def courier_credentials(courier_cleanup) -> dict[str, str]:
+    credentials = build_courier_payload()
+    response = create_courier(credentials)
+    if response.status_code != 201:
         pytest.fail("Could not create courier for test setup")
 
-    credentials = {
-        "login": login,
-        "password": password,
-        "firstName": first_name,
-    }
+    courier_cleanup.append(credentials)
 
-    yield credentials
+    return credentials
 
-    with allure.step("Delete created courier"):
-        login_response = request_with_retry(
-            "POST",
-            f"{base_url}/api/v1/courier/login",
-            json={"login": login, "password": password},
-        )
-        if login_response.status_code == 200 and "id" in login_response.json():
-            courier_id = login_response.json()["id"]
-            request_with_retry("DELETE", f"{base_url}/api/v1/courier/{courier_id}")
+
+@pytest.fixture
+def order_cleanup():
+    created_tracks = []
+
+    yield created_tracks
+
+    for track in created_tracks:
+        with allure.step("Cancel created order"):
+            cancel_order(track)
